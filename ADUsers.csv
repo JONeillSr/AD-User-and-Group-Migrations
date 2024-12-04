@@ -1,0 +1,2 @@
+DisplayName,GivenName,Surname,SamAccountName,UserPrincipalName,EmailAddress,Description,Office,Department,Title,Company,Manager,Enabled,PasswordNeverExpires
+Santa Claus,Santa,Claus,SClaus,SClaus@somedomainsomewhere.com,SClaus@somedomainsomewhere.com,,North Pole,Executive Management,Head Toymaker,,,TRUE,FALSE

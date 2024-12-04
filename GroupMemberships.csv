@@ -1,0 +1,4 @@
+"SamAccountName","GroupName","GroupDN"
+"SClaus","Remote Desktop Users","CN=Remote Desktop Users,CN=Builtin,DC=somedomainsomewhere,DC=com"
+"SClaus","NorthPoleAdmins","CN=NorthPoleAdmins,OU=InformationTechnology,DC=somedomainsomewhere,DC=com"
+
