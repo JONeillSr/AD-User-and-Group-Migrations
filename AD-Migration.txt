@@ -422,11 +422,9 @@ function Update-ExistingUser {
             
             return @{
                 Success = $true
-                $PasswordInfo = [PSCustomObject]@{
+                PasswordInfo = [PSCustomObject]@{
                     SamAccountName = $UserData.SamAccountName
                     UserPrincipalName = $NewUPN
-                    DisplayName = $UserData.DisplayName        
-                    SenderName = "IT Support"                
                     TemporaryPassword = $TempPassword
                     CreationTime = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
                     Action = if ($UpdateParams.Count -gt 0) { "Updated" } else { "Password Reset" }
@@ -585,8 +583,6 @@ function Import-ADUsers {
                 $null = $PasswordList.Add([PSCustomObject]@{
                     SamAccountName = $User.SamAccountName
                     UserPrincipalName = $NewUPN
-                    DisplayName = $User.DisplayName
-                    SenderName = "IT Support"
                     TemporaryPassword = $TempPassword
                     CreationTime = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
                     Action = "Created"
