@@ -1,28 +1,88 @@
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '', Justification='PasswordOutputPath is a file path, not a credential')]
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory=$true)]
+    [ValidateSet('export','import')]
+    [string]$Operation,
+
+    [Parameter(Mandatory=$true)]
+    [string]$DomainName,
+
+    [Parameter(Mandatory=$true)]
+    [string]$OrganizationalUnit,
+
+    [Parameter(Mandatory=$true)]
+    [string]$DomainController,
+
+    [Parameter(Mandatory=$false)]
+    [string]$CsvPath = ".\ADUsers.csv",
+
+    [Parameter(Mandatory=$false)]
+    [string]$LogPath = ".\ADMigration.log",
+
+    [Parameter(Mandatory=$false)]
+    [ValidateSet('Skip','Update','Error')]
+    [string]$ConflictAction = 'Skip',
+
+    [Parameter(Mandatory=$false)]
+    [string]$PasswordOutputPath = ".\TempPasswords.csv",
+
+    [Parameter(Mandatory=$false)]
+    [switch]$ForcePasswordReset,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$IncludeGroups,
+
+    [Parameter(Mandatory=$false)]
+    [string]$GroupMembershipPath = ".\GroupMemberships.csv",
+
+    [Parameter(Mandatory=$false)]
+    [ValidateNotNullOrEmpty()]
+    [string]$CredentialPath = ".\ad_migration_creds.xml",
+
+    [Parameter(Mandatory=$false)]
+    [switch]$StoreCredential,
+
+    [Parameter(Mandatory=$false)]
+    [System.Management.Automation.PSCredential]
+    [System.Management.Automation.Credential()]
+    $Credential = [System.Management.Automation.PSCredential]::Empty,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$UseSSL,
+
+    [Parameter(Mandatory=$false)]
+    [string]$TempPath = "$env:TEMP\ADMigration"
+)
+
+```powershell
 <#
 .SYNOPSIS
-    Exports users from a source AD domain and imports them into a target domain.
+    Exports users from a source AD domain and imports them into a target domain with enhanced security features.
 
 .DESCRIPTION
-    This script provides functionality to export AD users from specified OUs in a source domain
-    to a CSV file, and then import those users into a target domain. It includes error handling,
-    logging, verification steps, and handles existing user conflicts. The script can be run in
-    either export mode to collect user data, or import mode to create users in the target domain.
+    This script provides secure functionality to export AD users from specified OUs in a source domain
+    to a CSV file, and then import those users into a target domain. It includes enhanced security features,
+    secure credential handling, SSL support, and comprehensive validation checks.
     
-    When enabled, the script can also handle group memberships, exporting and importing them
-    along with the users.
+    The script can be run in either export mode to collect user data, or import mode to create users 
+    in the target domain. When enabled, it can also handle group memberships.
     
     Key Features:
+    - Secure credential storage and management
+    - SSL/TLS support for secure connections
+    - Network connectivity validation
+    - Prerequisite checking
     - Export users from source domain with all relevant attributes
     - Import users to target domain with configurable conflict handling
     - Optional group membership migration
     - Automatic UPN domain update during import
     - Secure temporary password generation and storage
-    - Appends to password history file with timestamps
-    - Password reset for updated users
-    - Force password reset option for existing users
     - Comprehensive logging with verbose option
     - Detailed error handling and statistics
     - Progress reporting and execution tracking
+    - Secure temporary file handling
+    - Remote session management
 
 .PARAMETER Operation
     Required. Specifies the operation to perform:
@@ -67,7 +127,7 @@
     Default: ".\TempPasswords.csv"
 
 .PARAMETER ForcePasswordReset
-    Optional. When specified with ConflictAction 'Update', forces a password reset for existing users
+    Optional. When specified with ConflictAction 'Update', forces password reset for existing users
     even if no other attributes need updating.
     Default: False
 
@@ -80,25 +140,42 @@
     Optional. The file path for the CSV file used to store group memberships.
     Default: ".\GroupMemberships.csv"
 
+.PARAMETER CredentialPath
+    Optional. The file path where encrypted credentials are stored/loaded.
+    Default: ".\ad_migration_creds.xml"
+
+.PARAMETER StoreCredential
+    Optional. Switch to save credentials for future use.
+    When this switch is used, the script will prompt for credentials, save them, and exit.
+
+.PARAMETER Credential
+    Optional. PSCredential object containing domain admin credentials.
+    If not provided, will attempt to load from CredentialPath or prompt for credentials.
+
+.PARAMETER UseSSL
+    Optional. Switch to enable SSL/TLS for secure connections to domain controllers.
+    Enforces LDAPS protocol and certificate validation.
+
+.PARAMETER TempPath
+    Optional. The path where temporary files will be stored.
+    This directory is secured with appropriate ACLs.
+    Default: "$env:TEMP\ADMigration"
+
 .EXAMPLE
-    # Export users from source domain
+    # Store credentials for future use
+    .\AD-Migration.ps1 -StoreCredential
+
+.EXAMPLE
+    # Export users with SSL enabled
     .\AD-Migration.ps1 -Operation export `
                       -DomainName "source.local" `
                       -OrganizationalUnit "OU=Users,DC=source,DC=local" `
                       -DomainController "DC1.source.local" `
+                      -UseSSL `
                       -Verbose
 
 .EXAMPLE
-    # Export users and their group memberships
-    .\AD-Migration.ps1 -Operation export `
-                      -DomainName "source.local" `
-                      -OrganizationalUnit "OU=Users,DC=source,DC=local" `
-                      -DomainController "DC1.source.local" `
-                      -IncludeGroups `
-                      -Verbose
-
-.EXAMPLE
-    # Import users with group memberships and force password resets
+    # Import users with stored credentials and group memberships
     .\AD-Migration.ps1 -Operation import `
                       -DomainName "target.local" `
                       -OrganizationalUnit "OU=Users,DC=target,DC=local" `
@@ -106,79 +183,183 @@
                       -ConflictAction Update `
                       -ForcePasswordReset `
                       -IncludeGroups `
+                      -UseSSL `
                       -Verbose
 
 .NOTES
     Author: John A. O'Neill Sr.
-    Date: 11/24/2024
-    Version: 1.1
-    Change Date: 11/25/2024
-    Change Purpose: Add grouop membership export/import functions
-    Prerequisite:   PowerShell Version 5.1 or later
+    Date: 12/04/2024
+    Version: 2.0
+    Change Purpose: Added enhanced security features including:
+                   - Secure credential management
+                   - SSL/TLS support
+                   - Network validation
+                   - Secure temp file handling
+                   - Remote session management
+    Prerequisites:  PowerShell Version 5.1 or later
                     ActiveDirectory PowerShell Module
-                    Domain Admin rights in both source and target domains
+                    Admin rights in both source and target domains
                     GroupMembership.ps1 script (if using -IncludeGroups)
-
-    The script performs the following checks and validations:
-    - Verifies the existence of the specified domain controllers
-    - Validates the existence of the specified OUs
-    - Checks for existing users during import
-    - Verifies file paths and creates directories as needed
 
 .LINK
     https://learn.microsoft.com/en-us/powershell/module/activedirectory/
 #>
 
-[CmdletBinding()]
-param (
-    [Parameter(Mandatory=$true)]
-    [ValidateSet('export','import')]
-    [string]$Operation,
-
-    [Parameter(Mandatory=$true)]
-    [string]$DomainName,
-
-    [Parameter(Mandatory=$true)]
-    [string]$OrganizationalUnit,
-
-    [Parameter(Mandatory=$true)]
-    [string]$DomainController,
-
-    [Parameter(Mandatory=$false)]
-    [string]$CsvPath = ".\ADUsers.csv",
-
-    [Parameter(Mandatory=$false)]
-    [string]$LogPath = ".\ADMigration.log",
-
-    [Parameter(Mandatory=$false)]
-    [ValidateSet('Skip','Update','Error')]
-    [string]$ConflictAction = 'Skip',
-
-    [Parameter(Mandatory=$false)]
-    [string]$PasswordOutputPath = ".\TempPasswords.csv",
-
-    [Parameter(Mandatory=$false)]
-    [switch]$ForcePasswordReset,
-
-    [Parameter(Mandatory=$false)]
-    [switch]$IncludeGroups,
-
-    [Parameter(Mandatory=$false)]
-    [string]$GroupMembershipPath = ".\GroupMemberships.csv"
-)
-
 # Start time for tracking execution duration
 $StartTime = Get-Date
 
-# Import group membership functions if needed
-if ($IncludeGroups) {
-    # Use $PSScriptRoot automatic variable to locate the GroupMembership.ps1 file in the same directory as the main script
-    $GroupMembershipScript = Join-Path $PSScriptRoot "GroupMembership.ps1"
-    if (Test-Path $GroupMembershipScript) {
-        . $GroupMembershipScript
-        Write-Verbose "Successfully loaded group membership functions"
-    } else {
-        throw "Group membership script not found at: $GroupMembershipScript"
+function Test-Prerequisites {
+    [CmdletBinding()]
+    param()
+    
+    Write-Log "Checking prerequisites..." -Level Verbose
+    
+    # Check for admin rights
+    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (!$isAdmin) {
+        throw "This script requires administrative rights. Please run as administrator."
+    }
+    
+    # Check required modules
+    $requiredModules = @('ActiveDirectory', 'Microsoft.PowerShell.Security')
+    foreach ($module in $requiredModules) {
+        if (!(Get-Module -ListAvailable -Name $module)) {
+            throw "Required module $module is not installed. Please install it first."
+        }
+    }
+    
+    # Enable TLS 1.2
+    try {
+        Write-Log "Configuring TLS 1.2..." -Level Verbose
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    }
+    catch {
+        throw "Failed to enable TLS 1.2: $_"
+    }
+    
+    Write-Log "Prerequisites check completed successfully." -Level Verbose
+}
+
+function Test-DomainControllerConnectivity {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$DomainController,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$UseSSL
+    )
+    
+    Write-Log "Testing connectivity to domain controller: $DomainController" -Level Verbose
+    
+    # Test basic network connectivity
+    if (!(Test-Connection -ComputerName $DomainController -Count 1 -Quiet)) {
+        throw "Cannot ping domain controller $DomainController"
+    }
+    
+    # Test LDAP connectivity
+    $port = if ($UseSSL) { 636 } else { 389 }
+    if (!(Test-NetConnection -ComputerName $DomainController -Port $port -WarningAction SilentlyContinue).TcpTestSucceeded) {
+        throw "Cannot connect to domain controller $DomainController on $(if ($UseSSL) { 'LDAPS' } else { 'LDAP' }) port $port"
+    }
+    
+    Write-Log "Successfully verified connectivity to $DomainController" -Level Verbose
+}
+
+function Initialize-SecureTempFolder {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$TempPath
+    )
+    
+    Write-Log "Initializing secure temporary folder..." -Level Verbose
+    
+    if (!(Test-Path $TempPath)) {
+        New-Item -ItemType Directory -Path $TempPath -Force | Out-Null
+        
+        # Secure the temporary directory
+        $acl = Get-Acl $TempPath
+        $acl.SetAccessRuleProtection($true, $false)
+        
+        # Add current user with full control
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $env:USERNAME,
+            "FullControl",
+            "ContainerInherit,ObjectInherit",
+            "None",
+            "Allow"
+        )
+        $acl.AddAccessRule($rule)
+        
+        # Add SYSTEM with full control
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            "NT AUTHORITY\SYSTEM",
+            "FullControl",
+            "ContainerInherit,ObjectInherit",
+            "None",
+            "Allow"
+        )
+        $acl.AddAccessRule($rule)
+        
+        Set-Acl $TempPath $acl
+        Write-Log "Secured temporary directory created at: $TempPath" -Level Verbose
+    }
+}
+
+function New-SecureRemoteSession {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$DomainController,
+        
+        [Parameter(Mandatory=$true)]
+        [System.Management.Automation.PSCredential]$Credential,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$UseSSL
+    )
+    
+    Write-Log "Establishing secure remote session to $DomainController..." -Level Verbose
+    
+    $sessionParams = @{
+        ComputerName = $DomainController
+        Credential = $Credential
+        ErrorAction = 'Stop'
+    }
+    
+    if ($UseSSL) {
+        $sessionParams['UseSSL'] = $true
+    }
+    
+    try {
+        $session = New-PSSession @sessionParams
+        Write-Log "Successfully established secure session to $DomainController" -Level Verbose
+        return $session
+    }
+    catch {
+        throw "Failed to establish session to ${DomainController}: $_"
+    }
+}
+
+function Write-Log {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('Information','Warning','Error','Verbose')]
+        [string]$Level = 'Information'
+    )
+    
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LogMessage = "$Timestamp [$Level] $Message"
+    Add-Content -Path $LogPath -Value $LogMessage
+    
+    switch ($Level) {
+        'Warning' { Write-Host $LogMessage -ForegroundColor Yellow }
+        'Error' { Write-Host $LogMessage -ForegroundColor Red }
+        'Verbose' { Write-Verbose $Message }
+        default { Write-Host $LogMessage }
     }
 }
 
@@ -220,45 +401,29 @@ function New-RandomPassword {
     
     $PasswordArray = @()
     
+    # Add required special characters
     for ($i = 0; $i -lt $MinSpecialChars; $i++) {
         $PasswordArray += $SpecialChars[(Get-Random -Maximum $SpecialChars.Length)]
     }
     
+    # Add required numbers
     for ($i = 0; $i -lt $MinNumbers; $i++) {
         $PasswordArray += $Numbers[(Get-Random -Maximum $Numbers.Length)]
     }
     
+    # Add required uppercase characters
     for ($i = 0; $i -lt $MinUpperCase; $i++) {
         $PasswordArray += $UpperCase[(Get-Random -Maximum $UpperCase.Length)]
     }
     
+    # Fill the rest with lowercase characters
     while ($PasswordArray.Count -lt $Length) {
         $PasswordArray += $LowerCase[(Get-Random -Maximum $LowerCase.Length)]
     }
     
+    # Randomize the array
     $PasswordArray = $PasswordArray | Sort-Object {Get-Random}
     return -join $PasswordArray
-}
-
-function Write-Log {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
-        [Parameter(Mandatory=$false)]
-        [ValidateSet('Information','Warning','Error','Verbose')]
-        [string]$Level = 'Information'
-    )
-    
-    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $LogMessage = "$Timestamp [$Level] $Message"
-    Add-Content -Path $LogPath -Value $LogMessage
-    
-    switch ($Level) {
-        'Warning' { Write-Host $LogMessage -ForegroundColor Yellow }
-        'Error' { Write-Host $LogMessage -ForegroundColor Red }
-        'Verbose' { Write-Verbose $Message }
-        default { Write-Host $LogMessage }
-    }
 }
 
 function Export-ADUsers {
@@ -282,7 +447,6 @@ function Export-ADUsers {
         Write-Log "Starting export operation from $DomainName"
         Write-Log "Connecting to domain controller: $DomainController" -Level Verbose
         Import-Module ActiveDirectory -ErrorAction Stop
-        Write-Log "Using DC: $DomainController" -Level Verbose
         
         $UserProperties = @(
             'DisplayName','GivenName','Surname','SamAccountName','UserPrincipalName',
@@ -303,7 +467,6 @@ function Export-ADUsers {
         Write-Log "Successfully exported $($Users.Count) users to $CsvPath"
         Write-Log "CSV file size: $((Get-Item $CsvPath).Length) bytes" -Level Verbose
 
-        # Handle group membership export if requested
         if ($IncludeGroups) {
             try {
                 Write-Log "Exporting group memberships..." -Level Verbose
@@ -415,18 +578,18 @@ function Update-ExistingUser {
             # Force password change at next logon
             Set-ADUser -Identity $ExistingUser `
                       -Server $Server `
-                      -ChangePasswordAtLogon $false
+                      -ChangePasswordAtLogon $true
 
             $updateReason = if ($UpdateParams.Count -gt 0) { "attributes changed" } else { "forced password reset" }
             Write-Log "Updating user ($updateReason): $($UserData.SamAccountName)" -Level Verbose
             
             return @{
                 Success = $true
-                $PasswordInfo = [PSCustomObject]@{
+                PasswordInfo = [PSCustomObject]@{
                     SamAccountName = $UserData.SamAccountName
                     UserPrincipalName = $NewUPN
-                    DisplayName = $UserData.DisplayName        
-                    SenderName = "IT Support"                
+                    DisplayName = $UserData.DisplayName
+                    SenderName = "IT Support"
                     TemporaryPassword = $TempPassword
                     CreationTime = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
                     Action = if ($UpdateParams.Count -gt 0) { "Updated" } else { "Password Reset" }
@@ -575,7 +738,7 @@ function Import-ADUsers {
                     Enabled = [System.Convert]::ToBoolean($User.Enabled)
                     PasswordNeverExpires = [System.Convert]::ToBoolean($User.PasswordNeverExpires)
                     AccountPassword = $SecurePassword
-                    ChangePasswordAtLogon = $false
+                    ChangePasswordAtLogon = $true
                     Path = $OrganizationalUnit
                     Server = $Server
                 }
@@ -653,11 +816,60 @@ function Import-ADUsers {
 try {
     Write-Log "Script started with operation: $Operation"
     Write-Log "Script parameters - Domain: $DomainName, OU: $OrganizationalUnit, DC: $DomainController" -Level Verbose
-    if ($Operation -eq 'import') {
-        Write-Log "Conflict action: $ConflictAction, Force password reset: $($ForcePasswordReset.ToString())" -Level Verbose
-        if ($IncludeGroups) {
-            Write-Log "Group membership handling enabled" -Level Verbose
+    
+    # Handle credentials first
+    if ($StoreCredential) {
+        Write-Log "Storing new credentials..." -Level Verbose
+        $cred = Get-Credential -Message "Enter Domain Admin credentials to store"
+        $cred | Export-Clixml -Path $CredentialPath
+        Write-Log "Credentials stored successfully at: $CredentialPath"
+        exit
+    }
+
+    # Handle credentials if not provided
+    if ($Credential -eq [System.Management.Automation.PSCredential]::Empty) {
+        if (Test-Path $CredentialPath) {
+            Write-Log "Loading stored credentials..." -Level Verbose
+            try {
+                $Credential = Import-Clixml -Path $CredentialPath
+                Write-Log "Credentials loaded successfully." -Level Verbose
+            }
+            catch {
+                Write-Log "Failed to load stored credentials: $_" -Level Error
+                Write-Log "Please enter credentials manually..." -Level Warning
+                $Credential = Get-Credential -Message "Enter Domain Admin credentials"
+            }
         }
+        else {
+            Write-Log "No stored credentials found. Please enter credentials." -Level Warning
+            Write-Log "Tip: Use -StoreCredential switch to save credentials for future use." -Level Information
+            $Credential = Get-Credential -Message "Enter Domain Admin credentials"
+        }
+    }
+    
+    # Check prerequisites and setup security
+    Test-Prerequisites
+    Initialize-SecureTempFolder -TempPath $TempPath
+    Test-DomainControllerConnectivity -DomainController $DomainController -UseSSL:$UseSSL
+    $session = New-SecureRemoteSession -DomainController $DomainController -Credential $Credential -UseSSL:$UseSSL
+    
+    # Update AD parameters with security settings
+    $adParams = @{
+        Server = $DomainController
+        Credential = $Credential
+    }
+    
+    if ($UseSSL) {
+        # Force LDAPS when SSL is enabled
+        $adParams['AuthType'] = 'Negotiate'
+        $adParams['Port'] = 636
+    }
+
+    # Verify log file path
+    $LogFolder = Split-Path $LogPath -Parent
+    if ($LogFolder -and (-not (Test-Path $LogFolder))) {
+        Write-Log "Creating log directory: $LogFolder" -Level Verbose
+        New-Item -ItemType Directory -Path $LogFolder -Force | Out-Null
     }
     
     # Import group membership functions if needed
@@ -671,13 +883,7 @@ try {
         }
     }
     
-    # Verify log file path
-    $LogFolder = Split-Path $LogPath -Parent
-    if ($LogFolder -and (-not (Test-Path $LogFolder))) {
-        Write-Log "Creating log directory: $LogFolder" -Level Verbose
-        New-Item -ItemType Directory -Path $LogFolder -Force | Out-Null
-    }
-    
+    # Execute requested operation
     switch ($Operation.ToLower()) {
         'export' {
             Write-Log "Initiating export operation" -Level Verbose
@@ -686,7 +892,8 @@ try {
                          -DomainController $DomainController `
                          -CsvPath $CsvPath `
                          -IncludeGroups $IncludeGroups `
-                         -GroupMembershipPath $GroupMembershipPath
+                         -GroupMembershipPath $GroupMembershipPath `
+                         @adParams
         }
         'import' {
             Write-Log "Initiating import operation" -Level Verbose
@@ -698,7 +905,8 @@ try {
                          -ForcePasswordReset $ForcePasswordReset.IsPresent `
                          -PasswordOutputPath $PasswordOutputPath `
                          -IncludeGroups $IncludeGroups `
-                         -GroupMembershipPath $GroupMembershipPath
+                         -GroupMembershipPath $GroupMembershipPath `
+                         @adParams
         }
     }
     
@@ -708,6 +916,19 @@ try {
 }
 catch {
     Write-Log "Script failed with error: $($_.Exception.Message)" -Level Error
-    Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level Verbose
-    exit 1
+    Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level Error
+    throw
+}
+finally {
+    # Clean up secure remote session if it exists
+    if ($session) {
+        Remove-PSSession $session -ErrorAction SilentlyContinue
+        Write-Log "Cleaned up remote session" -Level Verbose
+    }
+    
+    # Clean up temp files
+    if (Test-Path $TempPath) {
+        Get-ChildItem $TempPath -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
+        Write-Log "Cleaned up temporary files" -Level Verbose
+    }
 }

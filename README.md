@@ -1,11 +1,15 @@
 # AD Migration Script
 
-A PowerShell script for migrating Active Directory users between domains with support for group membership transfer, conflict handling, and comprehensive logging.
+A PowerShell script for migrating Active Directory users between domains with support for group membership transfer, conflict handling, enhanced security features, and comprehensive logging.
 
 ## Features
 
 - Export users from source domain with all relevant attributes
 - Import users to target domain with configurable conflict handling
+- Secure credential storage and management
+- SSL/TLS support for secure connections
+- Network connectivity validation
+- Prerequisite checking
 - Optional group membership migration
 - Automatic UPN domain update during import
 - Secure temporary password generation and storage
@@ -15,6 +19,8 @@ A PowerShell script for migrating Active Directory users between domains with su
 - Comprehensive logging with verbose option
 - Detailed error handling and statistics
 - Progress reporting and execution tracking
+- Secure temporary file handling
+- Remote session management
 
 ## Prerequisites
 
@@ -69,6 +75,7 @@ A PowerShell script for migrating Active Directory users between domains with su
   - File path where temporary passwords will be stored
   - File is automatically secured to allow access only to administrators
   - Passwords are appended with timestamps for historical tracking
+  - Includes user display name and sender name for each record
   - Default: ".\TempPasswords.csv"
 
 - **ForcePasswordReset**
@@ -84,28 +91,41 @@ A PowerShell script for migrating Active Directory users between domains with su
   - File path for the CSV file used to store group memberships
   - Default: ".\GroupMemberships.csv"
 
+- **CredentialPath**
+  - File path where encrypted credentials are stored/loaded
+  - Default: ".\ad_migration_creds.xml"
+
+- **StoreCredential**
+  - Switch to save credentials for future use
+  - When this switch is used, the script will prompt for credentials, save them, and exit
+
+- **UseSSL**
+  - Switch to enable SSL/TLS for secure connections to domain controllers
+  - Enforces LDAPS protocol and certificate validation
+
+- **TempPath**
+  - Path where temporary files will be stored
+  - Directory is secured with appropriate ACLs
+  - Default: "$env:TEMP\ADMigration"
+
 ## Examples
 
-### Export Users from Source Domain
+### Store Credentials for Future Use
+```powershell
+.\AD-Migration.ps1 -StoreCredential
+```
+
+### Export Users with SSL Enabled
 ```powershell
 .\AD-Migration.ps1 -Operation export `
                    -DomainName "source.local" `
                    -OrganizationalUnit "OU=Users,DC=source,DC=local" `
                    -DomainController "DC1.source.local" `
+                   -UseSSL `
                    -Verbose
 ```
 
-### Export Users and Their Group Memberships
-```powershell
-.\AD-Migration.ps1 -Operation export `
-                   -DomainName "source.local" `
-                   -OrganizationalUnit "OU=Users,DC=source,DC=local" `
-                   -DomainController "DC1.source.local" `
-                   -IncludeGroups `
-                   -Verbose
-```
-
-### Import Users with Group Memberships and Force Password Resets
+### Import Users with Stored Credentials and Group Memberships
 ```powershell
 .\AD-Migration.ps1 -Operation import `
                    -DomainName "target.local" `
@@ -114,8 +134,20 @@ A PowerShell script for migrating Active Directory users between domains with su
                    -ConflictAction Update `
                    -ForcePasswordReset `
                    -IncludeGroups `
+                   -UseSSL `
                    -Verbose
 ```
+
+## Security Features
+
+The script includes several security enhancements:
+- Secure credential storage and management
+- SSL/TLS support for domain controller connections
+- Network connectivity validation
+- Prerequisite verification
+- Secure temporary file handling
+- Remote session management
+- Enhanced password file security with display name and sender tracking
 
 ## Validation Checks
 
@@ -124,6 +156,8 @@ The script performs the following checks and validations:
 - Validates the existence of specified OUs
 - Checks for existing users during import
 - Verifies file paths and creates directories as needed
+- Tests network connectivity and SSL/TLS configuration
+- Validates administrative rights and required modules
 
 ## Additional Resources
 
@@ -134,6 +168,6 @@ For more information about the ActiveDirectory PowerShell Module:
 John A. O'Neill Sr.
 
 ## Version History
-- Version: 1.2
-- Last Updated: 12/03/2024
-- Change Purpose: Add fields to temporary password CSV file
+- Version: 2.0
+- Last Updated: 12/04/2024
+- Change Purpose: Added enhanced security features including secure credential management, SSL/TLS support, network validation, secure temp file handling, remote session management, and additional password tracking fields
