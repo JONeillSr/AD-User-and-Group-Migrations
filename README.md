@@ -134,6 +134,6 @@ For more information about the ActiveDirectory PowerShell Module:
 John A. O'Neill Sr.
 
 ## Version History
-- Version: 1.1
-- Last Updated: 11/25/2024
-- Change Purpose: Add group membership export/import functions
+- Version: 1.2
+- Last Updated: 12/03/2024
+- Change Purpose: Add fields to temporary password CSV file
